@@ -1,0 +1,25 @@
+# Alternativa a Cloud Run. La decision no es critica y es reversible: lo unico
+# critico es que haya un contenedor.  fly launch --no-deploy && fly deploy
+app = "plano3d-worker"
+primary_region = "mad"
+
+[build]
+  dockerfile = "../worker/Dockerfile"
+
+[env]
+  WORK_ROOT = "/data"
+
+[[mounts]]
+  source = "p3d_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "2gb"
+  cpus = 2
