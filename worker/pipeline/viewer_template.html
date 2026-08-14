@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LM20 · Tu reforma en 3D</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --ink:#14161a; --ink-2:#5b6270; --line:#e3e5ea; --bg:#cbd1da;
+    --accent:#1a56db; --ok:#0f8a5f; --warn:#b06a00; --panel:rgba(255,255,255,.92);
+  }
+  html,body{height:100%;overflow:hidden;background:var(--bg);
+    font:400 15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    color:var(--ink);-webkit-font-smoothing:antialiased}
+  #app{position:fixed;inset:0}
+  canvas{display:block;touch-action:none}
+
+  /* ---- cabecera ---- */
+  header{position:absolute;top:0;left:0;right:0;z-index:10;padding:14px 18px;
+    display:flex;align-items:flex-start;gap:14px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(203,209,218,.96),rgba(203,209,218,0))}
+  header h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  header p{font-size:12.5px;color:var(--ink-2);margin-top:1px}
+
+  /* ---- conmutador de variante ---- */
+  .seg{position:absolute;z-index:10;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));
+    display:flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    padding:4px;gap:2px;backdrop-filter:blur(12px);box-shadow:0 6px 24px rgba(20,22,26,.10)}
+  .seg button{border:0;background:none;font:inherit;font-size:13.5px;font-weight:500;color:var(--ink-2);
+    padding:8px 18px;border-radius:999px;cursor:pointer;white-space:nowrap;transition:.18s}
+  .seg button.on{background:var(--ink);color:#fff}
+
+  /* ---- barra de herramientas ---- */
+  .tools{position:absolute;z-index:10;right:14px;top:64px;display:flex;flex-direction:column;gap:6px}
+  .tools button{width:40px;height:40px;border:1px solid var(--line);background:var(--panel);border-radius:11px;
+    cursor:pointer;font-size:16px;color:var(--ink-2);backdrop-filter:blur(12px);transition:.15s;
+    display:flex;align-items:center;justify-content:center}
+  .tools button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  .tools button:active{transform:scale(.94)}
+
+  /* ---- panel lateral ---- */
+  #panel{position:absolute;z-index:11;left:14px;top:64px;width:290px;max-height:calc(100% - 150px);
+    overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    backdrop-filter:blur(14px);box-shadow:0 8px 30px rgba(20,22,26,.10);padding:14px;
+    transition:opacity .2s,transform .2s}
+  #panel.hide{opacity:0;transform:translateX(-12px);pointer-events:none}
+  #panel h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2);margin-bottom:9px}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);
+    font-size:13.5px;cursor:pointer;border-radius:6px}
+  .row:last-of-type{border-bottom:0}
+  .row:hover{background:rgba(26,86,219,.06)}
+  .row.on{background:rgba(26,86,219,.10)}
+  .row b{font-weight:600}
+  .row span{color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tot{display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;
+    border-top:1.5px solid var(--ink);font-size:14px;font-weight:600}
+  .note{margin-top:12px;padding-top:11px;border-top:1px solid var(--line);font-size:11.5px;
+    line-height:1.5;color:var(--ink-2)}
+  .note b{color:var(--ink)}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px}
+  .dot.ok{background:var(--ok)} .dot.wa{background:var(--warn)} .dot.inf{background:#d08a2a}
+
+  /* ---- etiquetas 3D ---- */
+  #labels{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden}
+  .lbl{position:absolute;transform:translate(-50%,-50%);text-align:center;white-space:nowrap;
+    font-size:11.5px;font-weight:600;color:#22252b;text-shadow:0 1px 3px rgba(255,255,255,.95),0 0 10px rgba(255,255,255,.9);
+    transition:opacity .2s}
+  .lbl em{display:block;font-style:normal;font-weight:500;font-size:10.5px;color:#6a7180;letter-spacing:.01em}
+
+  /* ---- corte horizontal ---- */
+  .cut{position:absolute;z-index:10;right:16px;bottom:calc(90px + env(safe-area-inset-bottom));
+    height:150px;display:flex;flex-direction:column;align-items:center;gap:7px}
+  .cut input{writing-mode:vertical-lr;direction:rtl;width:26px;height:120px;accent-color:var(--ink);cursor:pointer}
+  .cut label{font-size:10px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
+
+  #hint{position:absolute;z-index:9;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));
+    font-size:11.5px;color:var(--ink-2);background:rgba(255,255,255,.8);padding:4px 12px;border-radius:999px;
+    transition:opacity .6s}
+
+  @media (max-width:760px){
+    #panel{left:10px;right:10px;width:auto;top:96px;max-height:46%}
+    .tools{top:auto;bottom:calc(74px + env(safe-area-inset-bottom));right:10px;flex-direction:row}
+    header{padding:10px 12px} header h1{font-size:14px} header p{font-size:11.5px}
+    .cut{bottom:calc(126px + env(safe-area-inset-bottom));right:12px;height:120px}
+    .cut input{height:96px}
+    .lbl{font-size:10.5px} .lbl em{font-size:9.5px}
+    #hint{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app"><div id="labels"></div></div>
+
+<header>
+  <div>
+    <h1>Calle Luis Mitjans 20, 2º-6 · Madrid</h1>
+    <p>Milímetro Arquitectura e Interiorismo · volumetría generada desde el plano CAD</p>
+  </div>
+</header>
+
+<div class="tools">
+  <button id="bPanel" class="on" title="Superficies">▤</button>
+  <button id="bTop" title="Vista cenital">⌗</button>
+  <button id="bLabels" class="on" title="Etiquetas">A</button>
+  <button id="bGlass" class="on" title="Carpintería">▢</button>
+</div>
+
+<div id="panel"></div>
+<div class="cut"><input id="cut" type="range" min="0.4" max="3" step="0.05" value="3"><label>corte</label></div>
+<div class="seg" id="seg"></div>
+<div id="hint">arrastra para girar · dos dedos o rueda para acercar</div>
+
+<script>window.SCENE_DATA = /*__DATA__*/{}/*__ENDDATA__*/;</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const D = window.SCENE_DATA;
+const app = document.getElementById('app');
+const labelHost = document.getElementById('labels');
+
+// ---------- render ----------
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+app.appendChild(renderer.domElement);
+
+const BG = 0xcbd1da;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BG);
+scene.fog = new THREE.Fog(BG, 38, 95);
+
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 400);
+
+// luz: cielo suave + sol rasante para que la volumetría blanca lea el relieve
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c0cc, 0.55));
+const sun = new THREE.DirectionalLight(0xfff4e2, 0.5);
+sun.position.set(9, 16, 7);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+const S = 16;
+sun.shadow.camera.left=-S; sun.shadow.camera.right=S;
+sun.shadow.camera.top=S;  sun.shadow.camera.bottom=-S;
+sun.shadow.camera.far = 60; sun.shadow.bias = -0.0007;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xdfe6f5, 0.16);
+fill.position.set(-8,7,-9); scene.add(fill);
+
+// suelo de contacto
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(160,160),
+  new THREE.ShadowMaterial({opacity:0.22}));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.005;
+ground.receiveShadow = true; scene.add(ground);
+
+// ---------- materiales ----------
+// Contraste por material, no por color de estancia: el muro es blanco, el corte
+// del muro es pizarra oscura (asi la planta se lee desde arriba), el suelo es
+// madera calida y el fondo es gris frio. Cuatro valores separados en luminosidad.
+const matWall  = new THREE.MeshStandardMaterial({color:0xfaf9f6, roughness:0.94, metalness:0.0});
+const matCap   = new THREE.MeshStandardMaterial({color:0x4a5361, roughness:0.85, metalness:0.0});
+const matFloor = new THREE.MeshStandardMaterial({color:0xa8825b, roughness:0.88, side:THREE.DoubleSide});
+const matGlass = new THREE.MeshPhysicalMaterial({color:0x5b9bd8, transparent:true, opacity:0.42,
+  roughness:0.06, metalness:0.0, transmission:0.0, side:THREE.DoubleSide});
+const matDoor  = new THREE.MeshStandardMaterial({color:0x8a6a4a, roughness:0.7});
+// paso deducido de que la estancia tiene que ser accesible: se pinta distinto
+// para que nadie lo confunda con un dato medido
+const matDoorInf = new THREE.MeshStandardMaterial({color:0xd08a2a, roughness:0.6,
+  transparent:true, opacity:0.55});
+const matEdge  = new THREE.LineBasicMaterial({color:0x3d4653, transparent:true, opacity:0.42});
+const FLOOR_BASE = 0xa8825b, FLOOR_HI = 0x2a78d6;   // azul de seleccion, slot 1 validado
+const floorMats = [];
+
+// ---------- construcción ----------
+function shapeFrom(p){
+  const s = new THREE.Shape();
+  p.shell.forEach((pt,i)=> i?s.lineTo(pt[0],pt[1]):s.moveTo(pt[0],pt[1]));
+  (p.holes||[]).forEach(h=>{
+    const path = new THREE.Path();
+    h.forEach((pt,i)=> i?path.lineTo(pt[0],pt[1]):path.moveTo(pt[0],pt[1]));
+    s.holes.push(path);
+  });
+  return s;
+}
+
+const groups = {};
+const labelSets = {};
+const cutItems = {};
+let W=0, Hd=0;
+
+D.islands.forEach(isl=>{
+  const g = new THREE.Group();
+  const cx = isl.size[0]/2, cy = isl.size[1]/2;
+  W = Math.max(W, isl.size[0]); Hd = Math.max(Hd, isl.size[1]);
+  const cuts = cutItems[isl.key] = [];
+
+  // muros por franjas -> antepechos y dinteles salen solos
+  isl.slabs.forEach(sl=>{
+    sl.polys.forEach(p=>{
+      const geo = new THREE.ExtrudeGeometry(shapeFrom(p), {depth: sl.z1-sl.z0, bevelEnabled:false});
+      const mesh = new THREE.Mesh(geo, matWall);
+      mesh.rotation.x = -Math.PI/2;
+      mesh.position.set(-cx, sl.z0, cy);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      g.add(mesh);
+      const eg = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), matEdge);
+      eg.rotation.copy(mesh.rotation); eg.position.copy(mesh.position);
+      eg.userData.edge = true;
+      g.add(eg);
+      // tapa superior del muro: es el corte de la sección y es lo que hace legible
+      // la planta desde arriba. Queda oculta bajo la franja siguiente salvo que el
+      // corte la descubra.
+      const cap = new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(p)), matCap);
+      cap.rotation.x = -Math.PI/2;
+      cap.position.set(-cx, sl.z1 + 0.002, cy);
+      cap.receiveShadow = true;
+      g.add(cap);
+      cuts.push({o:mesh, z:sl.z0}, {o:eg, z:sl.z0}, {o:cap, z:sl.z0});
+    });
+  });
+
+  // suelos de estancia
+  isl.rooms.forEach(r=>{
+    const geo = new THREE.ShapeGeometry(shapeFrom(r.poly));
+    const m = new THREE.Mesh(geo, matFloor.clone());
+    floorMats.push(m.material);
+    m.rotation.x = -Math.PI/2;
+    m.position.set(-cx, 0.012, cy);
+    m.receiveShadow = true;
+    m.userData.room = r.name;
+    g.add(m);
+    r._mesh = m;
+  });
+
+  // techo: oculto en la vista de maqueta, visible en las vistas interiores
+  const ceil = new THREE.Group(); ceil.visible = false; ceil.userData.ceiling = true;
+  isl.rooms.forEach(r=>{
+    const m = new THREE.Mesh(new THREE.ShapeGeometry(shapeFrom(r.poly)),
+      new THREE.MeshStandardMaterial({color:0xf2f2f0, roughness:1, side:THREE.DoubleSide}));
+    m.rotation.x = -Math.PI/2;
+    m.position.set(-cx, r.height, cy);
+    ceil.add(m);
+  });
+  g.add(ceil);
+
+  // carpintería
+  const glass = new THREE.Group(); glass.userData.glass = true;
+  isl.openings.forEach(o=>{
+    if(o.axis===null || o.axis===undefined) return;
+    const h = o.head - o.sill; if(h<=0.02) return;
+    const th = o.kind.indexOf('vent')===0 ? 0.045 : 0.035;
+    const len = o.end - o.start;
+    const dims = o.axis===0 ? [len, h, th] : [th, h, len];
+    const mat = o.status==='inferido' ? matDoorInf
+              : (o.kind.indexOf('vent')===0 ? matGlass : matDoor);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(dims[0],dims[1],dims[2]), mat);
+    const px = o.axis===0 ? (o.start+o.end)/2 : o.perp;
+    const py = o.axis===0 ? o.perp : (o.start+o.end)/2;
+    box.position.set(px - cx, o.sill + h/2, cy - py);
+    glass.add(box);
+    cuts.push({o:box, z:o.sill, glass:true});
+  });
+  g.add(glass);
+
+  scene.add(g);
+  groups[isl.key] = g;
+  labelSets[isl.key] = isl.rooms.map(r=>{
+    const el = document.createElement('div');
+    el.className='lbl';
+    el.innerHTML = `${r.name}<em>${r.area_calc.toFixed(2).replace('.',',')} m² · ${r.height.toFixed(2).replace('.',',')} m</em>`;
+    labelHost.appendChild(el);
+    return {el, pos:new THREE.Vector3(r.label_xy[0]-cx, 0.05, cy-r.label_xy[1]), room:r};
+  });
+});
+
+// ---------- cámara orbital propia (sin dependencias) ----------
+const target = new THREE.Vector3(0, 1.0, 0);
+let yaw = -0.62, pitch = 1.02, dist = Math.max(W,Hd)*1.35;
+let tYaw=yaw, tPitch=pitch, tDist=dist;
+const DMIN = 4, DMAX = 60;
+
+function applyCam(){
+  if(window.__free){
+    camera.position.copy(window.__free.p); camera.lookAt(window.__free.t); return;
+  }
+  yaw += (tYaw-yaw)*0.18; pitch += (tPitch-pitch)*0.18; dist += (tDist-dist)*0.14;
+  const cp = Math.cos(pitch);
+  camera.position.set(
+    target.x + dist*cp*Math.sin(yaw),
+    target.y + dist*Math.sin(pitch),
+    target.z + dist*cp*Math.cos(yaw));
+  camera.lookAt(target);
+}
+
+let drag=null, pinch=null;
+const el = renderer.domElement;
+el.addEventListener('pointerdown', e=>{ el.setPointerCapture(e.pointerId); drag={x:e.clientX,y:e.clientY}; hideHint(); });
+el.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  tYaw   -= (e.clientX-drag.x)*0.006;
+  tPitch += (e.clientY-drag.y)*0.005;
+  tPitch = Math.max(0.06, Math.min(1.5, tPitch));
+  drag={x:e.clientX,y:e.clientY};
+});
+addEventListener('pointerup', ()=>drag=null);
+addEventListener('pointercancel', ()=>drag=null);
+el.addEventListener('wheel', e=>{ e.preventDefault(); tDist = Math.max(DMIN,Math.min(DMAX, tDist*(1+e.deltaY*0.0013))); hideHint(); },{passive:false});
+el.addEventListener('touchstart', e=>{ if(e.touches.length===2){ drag=null; pinch=tdist(e); } },{passive:true});
+el.addEventListener('touchmove', e=>{
+  if(e.touches.length===2 && pinch){ const d=tdist(e); tDist=Math.max(DMIN,Math.min(DMAX,tDist*pinch/d)); pinch=d; }
+},{passive:true});
+el.addEventListener('touchend', ()=>pinch=null);
+function tdist(e){ const a=e.touches[0],b=e.touches[1]; return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY); }
+function hideHint(){ const h=document.getElementById('hint'); if(h) h.style.opacity=0; }
+setTimeout(hideHint, 6000);
+
+// ---------- interfaz ----------
+let current = D.islands[0].key;
+let showLabels = true, showGlass = true;
+
+const seg = document.getElementById('seg');
+D.islands.forEach(isl=>{
+  const b=document.createElement('button');
+  b.textContent = isl.label; b.dataset.k = isl.key;
+  b.onclick = ()=> setVariant(isl.key);
+  seg.appendChild(b);
+});
+
+let cutH = 3;
+function applyCut(){
+  Object.entries(cutItems).forEach(([k,list])=> list.forEach(it=>{
+    const on = it.z < cutH - 1e-6;
+    it.o.visible = on && (!it.glass || showGlass);
+  }));
+}
+document.getElementById('cut').addEventListener('input', e=>{ cutH = +e.target.value; applyCut(); });
+
+function setVariant(k){
+  current = k;
+  Object.entries(groups).forEach(([key,g])=> g.visible = (key===k));
+  Object.entries(labelSets).forEach(([key,ls])=> ls.forEach(l=> l.el.style.display = (key===k && showLabels)?'':'none'));
+  seg.querySelectorAll('button').forEach(b=> b.classList.toggle('on', b.dataset.k===k));
+  applyCut();
+  drawPanel();
+}
+
+function drawPanel(){
+  const isl = D.islands.find(i=>i.key===current);
+  const p = document.getElementById('panel');
+  const ver = isl.openings.filter(o=>o.status==='verificado').length;
+  const apr = isl.openings.filter(o=>o.status==='aproximado').length;
+  const inf = isl.openings.filter(o=>o.status==='inferido');
+  p.innerHTML =
+    `<h2>Superficies útiles</h2>` +
+    isl.rooms.map((r,i)=>
+      `<div class="row" data-i="${i}"><b>${r.name}</b><span>${r.area_calc.toFixed(2).replace('.',',')} m²</span></div>`).join('') +
+    `<div class="tot"><span>Total útil</span><span>${isl.area_total.toFixed(2).replace('.',',')} m²</span></div>` +
+    `<div class="note">
+       <div><span class="dot ok"></span><b>${ver}</b> huecos medidos sobre el plano y contrastados con su etiqueta de carpintería (error 0&nbsp;mm).</div>
+       ${apr?`<div style="margin-top:5px"><span class="dot wa"></span><b>${apr}</b> con posición aproximada (±10&nbsp;cm): el CAD no dibuja esa partición en la capa de sección.</div>`:''}
+       ${inf.length?`<div style="margin-top:5px"><span class="dot inf"></span><b>${inf.length}</b> paso${inf.length>1?'s':''} <b>sin dibujar en el plano</b> (${inf.map(o=>(o.rooms||[]).join('–')).join(', ')}). Se muestran en ámbar: no están medidos, se deducen de que la estancia tiene que ser accesible.</div>`:''}
+       <div style="margin-top:5px">Altura libre ${isl.height_assumed?'<b>asumida</b> 2,72 m — pendiente de cota del estudio':'tomada de la capa <b>TEXTO TECHOS</b> del propio plano'}.</div>
+       <div style="margin-top:5px">Superficie declarada en el plano: ${isl.area_total_decl.toFixed(2).replace('.',',')} m². Desviación ${(Math.abs(isl.area_total-isl.area_total_decl)*10000).toFixed(0)} cm².</div>
+     </div>`;
+  p.querySelectorAll('.row').forEach(row=>{
+    row.onmouseenter = ()=> highlight(isl, +row.dataset.i, true);
+    row.onmouseleave = ()=> highlight(isl, +row.dataset.i, false);
+    row.onclick = ()=>{ const r = isl.rooms[+row.dataset.i];
+      const l = labelSets[isl.key][+row.dataset.i];
+      target.set(l.pos.x, 1.0, l.pos.z); tDist = 9; };
+  });
+}
+function highlight(isl, i, on){
+  const m = isl.rooms[i]._mesh; if(!m) return;
+  m.material.color.set(on ? FLOOR_HI : FLOOR_BASE);
+}
+
+document.getElementById('bPanel').onclick = e=>{
+  const p=document.getElementById('panel'); p.classList.toggle('hide');
+  e.currentTarget.classList.toggle('on', !p.classList.contains('hide'));
+};
+document.getElementById('bTop').onclick = e=>{
+  const top = tPitch < 1.3;
+  const base = (innerWidth < innerHeight) ? YAW_P : YAW_L;
+  tPitch = top ? 1.5 : 1.02; tYaw = top ? (base>0?Math.PI/2:0) : base;
+  target.set(0, top?0.4:1.0, 0); tDist = fitDist(1, tYaw, tPitch);
+  e.currentTarget.classList.toggle('on', top);
+};
+document.getElementById('bLabels').onclick = e=>{
+  showLabels = !showLabels; e.currentTarget.classList.toggle('on', showLabels);
+  Object.entries(labelSets).forEach(([k,ls])=> ls.forEach(l=> l.el.style.display=(k===current&&showLabels)?'':'none'));
+};
+document.getElementById('bGlass').onclick = e=>{
+  showGlass = !showGlass; e.currentTarget.classList.toggle('on', showGlass);
+  applyCut();
+};
+
+// ---------- bucle ----------
+const v = new THREE.Vector3();
+// encuadra la planta entera segun el aspecto real de la pantalla
+// encuadre numerico: proyecta las 8 esquinas de la envolvente y ajusta la distancia
+// hasta que quepan. Independiente del giro y del aspecto de pantalla.
+const CORNERS = [];
+function buildCorners(){
+  CORNERS.length = 0;
+  const hx = W/2 + 0.25, hz = Hd/2 + 0.25, hy = 2.8;
+  for(const sx of [-1,1]) for(const sz of [-1,1]) for(const sy of [0,1])
+    CORNERS.push(new THREE.Vector3(sx*hx, sy*hy, sz*hz));
+}
+const _p = new THREE.Vector3(), _cam = camera.clone();
+const _up = new THREE.Vector3(), _right = new THREE.Vector3();
+function fitDist(pad, y, p){
+  y = (y===undefined)?tYaw:y; p = (p===undefined)?tPitch:p;
+  const margin = (pad||1.0) * (camera.aspect<1 ? 0.93 : 0.90);
+  const vT = Math.tan(camera.fov*Math.PI/360);
+  let d = Math.max(W,Hd);
+  target.set(0, 1.2, 0);
+  _cam.fov = camera.fov; _cam.aspect = camera.aspect;
+  for(let it=0; it<8; it++){
+    const cp = Math.cos(p);
+    _cam.position.set(target.x + d*cp*Math.sin(y), target.y + d*Math.sin(p), target.z + d*cp*Math.cos(y));
+    _cam.lookAt(target); _cam.updateProjectionMatrix(); _cam.updateMatrixWorld();
+    let x0=9,x1=-9,y0=9,y1=-9;
+    for(const c of CORNERS){ _p.copy(c).project(_cam);
+      x0=Math.min(x0,_p.x); x1=Math.max(x1,_p.x); y0=Math.min(y0,_p.y); y1=Math.max(y1,_p.y); }
+    // recentrar moviendo el objetivo en el plano de la camara
+    _up.set(0,1,0).applyQuaternion(_cam.quaternion);
+    _right.set(1,0,0).applyQuaternion(_cam.quaternion);
+    const cX = (x0+x1)/2, cY = (y0+y1)/2;
+    target.addScaledVector(_right, cX*d*vT*camera.aspect);
+    target.addScaledVector(_up,    cY*d*vT);
+    const m = Math.max(x1-x0, y1-y0)/2;
+    d *= m/margin;
+    d = Math.max(DMIN, Math.min(DMAX, d));
+  }
+  return d;
+}
+const YAW_L = -0.62, YAW_P = -0.62 + Math.PI/2;
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+  buildCorners();
+  tDist = fitDist();
+}
+addEventListener('resize', resize);
+
+function tick(){
+  applyCam();
+  if(showLabels){
+    const ls = labelSets[current]||[];
+    ls.forEach(l=>{
+      v.copy(l.pos).project(camera);
+      const vis = v.z < 1;
+      l.el.style.display = vis ? '' : 'none';
+      if(vis){
+        l.el.style.left = ((v.x*0.5+0.5)*innerWidth)+'px';
+        l.el.style.top  = ((-v.y*0.5+0.5)*innerHeight)+'px';
+      }
+    });
+  }
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+// utilidad para captura automatizada / enlaces profundos
+window.__setCam = (y,p,d,ty)=>{ tYaw=yaw=y; tPitch=pitch=p; tDist=dist=d; target.y=ty; };
+// camara libre: se usa para renderizar vistas interiores que alimentan el render IA
+window.__setEye = (ex,ey,ez, tx,ty,tz, fov)=>{
+  camera.fov = fov||55; camera.updateProjectionMatrix();
+  camera.position.set(ex,ey,ez); camera.lookAt(tx,ty,tz);
+  window.__free = {p:new THREE.Vector3(ex,ey,ez), t:new THREE.Vector3(tx,ty,tz)};
+};
+window.__clay = (on)=>{
+  matWall.color.set(on?0xcfcdc8:0xfaf9f6);
+  matCap.color.set(on?0xcfcdc8:0x4a5361);
+  matFloor.color.set(on?0x9c948a:FLOOR_BASE);
+  floorMats.forEach(m=>m.color.set(on?0x9c948a:FLOOR_BASE));
+  matGlass.color.set(on?0xdcecfb:0x5b9bd8); matGlass.opacity = on?0.75:0.42;
+  sun.intensity = on?0.42:0.5;
+  scene.children.forEach(c=>{ if(c.isHemisphereLight) c.intensity = on?0.5:0.55; });
+  scene.background.set(on?0xdde6f0:BG);
+  scene.fog = on ? null : new THREE.Fog(BG,38,95);
+  matEdge.opacity = on?0:0.42;
+  scene.traverse(o=>{ if(o.userData && o.userData.ceiling) o.visible = on; });
+  document.querySelectorAll('header,.tools,.seg,.cut,#panel,#hint,#labels').forEach(e=>e.style.display=on?'none':'');
+};
+// Segundo modo de imagen de control: en vez de gris neutro, la estancia ya
+// texturizada (yeso blanco, roble, cielo por la ventana). Cuanto menos tiene que
+// inventar el modelo generativo, menos se desvia de la geometria.
+window.__material = ()=>{
+  matWall.color.set(0xf4f2ee);
+  matCap.color.set(0xf4f2ee);
+  matFloor.color.set(0xb08a5f);
+  floorMats.forEach(m=>m.color.set(0xb08a5f));
+  matGlass.color.set(0xffffff); matGlass.opacity = 1;
+  matGlass.emissive.set(0xffffff); matGlass.emissiveIntensity = 2.4;
+  matDoor.color.set(0xd9cbb6); matDoorInf.color.set(0xd9cbb6); matDoorInf.opacity = 1;
+  sun.intensity = 0.62;
+  scene.children.forEach(c=>{ if(c.isHemisphereLight) c.intensity = 0.62; });
+  scene.background.set(0xeaf3fc);
+  scene.fog = null;
+  matEdge.opacity = 0;
+  scene.traverse(o=>{ if(o.userData && o.userData.ceiling) o.visible = true; });
+  document.querySelectorAll('header,.tools,.seg,.cut,#panel,#hint,#labels')
+    .forEach(e=>e.style.display='none');
+};
+window.__setVariant = setVariant;
+
+setVariant(D.islands[0].key);
+tYaw = yaw = (innerWidth < innerHeight) ? YAW_P : YAW_L;
+resize();
+dist = tDist;
+if(innerWidth < 760){
+  document.getElementById('panel').classList.add('hide');
+  document.getElementById('bPanel').classList.remove('on');
+}
+tick();
+window.__scene = scene; window.__mats = {matCap, matWall, matFloor};
+window.__ready = true;
+})();
+</script>
+</body>
+</html>
