@@ -1,0 +1,10 @@
+data/
+__pycache__/
+*.pyc
+node_modules/
+.next/
+.env*
+
+# three.js no se vendoriza: 592 KB de libreria minificada en el historial no
+# aportan nada. Lo baja vendor.sh y lo baja el CI.
+worker/pipeline/three.min.js
