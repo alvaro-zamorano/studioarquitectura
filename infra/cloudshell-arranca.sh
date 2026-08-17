@@ -28,7 +28,8 @@ if [ -z "$ACTUAL" ] || [ "$ACTUAL" = "(unset)" ]; then
   read -rp "ID del proyecto a usar o crear [$PROY_DEF]: " ACTUAL
   ACTUAL="${ACTUAL:-$PROY_DEF}"
   if ! gcloud projects describe "$ACTUAL" >/dev/null 2>&1; then
-    alto "El proyecto '$ACTUAL' no existe. Se va a CREAR."
+    alto "El proyecto '$ACTUAL' no existe (o es de otra cuenta). Se intentará CREAR."
+    gris "Los IDs son únicos en todo Google Cloud: si sale 'already in use', elige otro."
     read -rp "¿Crearlo? [s/N] " R
     case "${R:-n}" in [Ss]*) gcloud projects create "$ACTUAL";; *) exit 1;; esac
   fi
@@ -42,15 +43,35 @@ azul "2 · facturación"
 if gcloud beta billing projects describe "$ACTUAL" --format='value(billingEnabled)' 2>/dev/null | grep -qi true; then
   echo "ya vinculada"
 else
-  CUENTAS=$(gcloud beta billing accounts list --format='value(name,displayName)' 2>/dev/null || true)
-  if [ -z "$CUENTAS" ]; then
+  gcloud beta billing accounts list --format='value(name,displayName)' 2>/dev/null \
+    | tee /tmp/p3d-cuentas.txt
+  if [ ! -s /tmp/p3d-cuentas.txt ]; then
     alto "No hay ninguna cuenta de facturación en esta sesión."
     echo "Créala en https://console.cloud.google.com/billing y vuelve a lanzar esto."
     exit 1
   fi
-  echo "$CUENTAS"
-  read -rp "ID de la cuenta a vincular (la primera columna): " CTA
-  alto "Se va a VINCULAR la facturación de '$CTA' al proyecto '$ACTUAL'."
+  # Se valida el formato ANTES de usarlo. La primera version de este script
+  # aceptaba cualquier cosa —incluido un 's' de responder 'si' por inercia— y
+  # se lo pasaba a gcloud, que devolvia un INVALID_ARGUMENT sin explicar nada.
+  CTA=""
+  for _ in 1 2 3; do
+    read -rp "ID de la cuenta a vincular (la PRIMERA columna, formato XXXXXX-XXXXXX-XXXXXX): " CTA
+    if grep -q "^${CTA}[[:space:]]" /tmp/p3d-cuentas.txt 2>/dev/null; then
+      break
+    fi
+    if [[ "$CTA" =~ ^[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}$ ]]; then
+      gris "No está en la lista de arriba, pero tiene formato válido. Se intentará."
+      break
+    fi
+    alto "'$CTA' no es un ID de cuenta de facturación."
+    gris "Tiene que ser una de las de arriba, no 's' ni 'sí'."
+    CTA=""
+  done
+  [ -n "$CTA" ] || { echo "tres intentos fallidos, se aborta"; exit 1; }
+
+  NOMBRE=$(grep "^${CTA}[[:space:]]" /tmp/p3d-cuentas.txt | cut -f2- || echo "?")
+  alto "Se va a VINCULAR la facturación al proyecto '$ACTUAL'."
+  echo "   cuenta: $CTA  ($NOMBRE)"
   gris "Con el uso previsto no deberías pagar nada: la franja gratuita de Cloud Run"
   gris "cubre 240.000 vCPU-s y 450.000 GiB-s al mes. Pero es dinero: decides tú."
   read -rp "¿Vincular? [s/N] " R
