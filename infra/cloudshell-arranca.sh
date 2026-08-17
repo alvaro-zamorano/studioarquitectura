@@ -43,28 +43,32 @@ azul "2 · facturación"
 if gcloud beta billing projects describe "$ACTUAL" --format='value(billingEnabled)' 2>/dev/null | grep -qi true; then
   echo "ya vinculada"
 else
-  gcloud beta billing accounts list --format='value(name,displayName)' 2>/dev/null \
-    | tee /tmp/p3d-cuentas.txt
+  # Se listan SOLO las abiertas. Una cuenta cerrada se vincula sin error y deja
+  # el proyecto con billingEnabled=false; el fallo aparece despues, al activar
+  # las APIs, con un UREQ_PROJECT_BILLING_NOT_OPEN que no dice que la culpable
+  # es la cuenta. Mejor no ofrecerla siquiera.
+  gcloud beta billing accounts list --filter='open=true' \
+    --format='value(name,displayName)' 2>/dev/null | tee /tmp/p3d-cuentas.txt
   if [ ! -s /tmp/p3d-cuentas.txt ]; then
-    alto "No hay ninguna cuenta de facturación en esta sesión."
-    echo "Créala en https://console.cloud.google.com/billing y vuelve a lanzar esto."
+    alto "No tienes ninguna cuenta de facturación ABIERTA."
+    gcloud beta billing accounts list --format='table(name,displayName,open)' 2>/dev/null || true
+    echo
+    echo "Si alguna sale con open: False, está cerrada (prueba gratuita agotada o"
+    echo "tarjeta caducada). Se reactiva en el navegador, no hay comando:"
+    echo "  https://console.cloud.google.com/billing"
     exit 1
   fi
-  # Se valida el formato ANTES de usarlo. La primera version de este script
-  # aceptaba cualquier cosa —incluido un 's' de responder 'si' por inercia— y
-  # se lo pasaba a gcloud, que devolvia un INVALID_ARGUMENT sin explicar nada.
+  # Se valida ANTES de usarlo. La primera version de este script aceptaba
+  # cualquier cosa —incluido un 's' de responder 'si' por inercia— y se lo
+  # pasaba a gcloud, que devolvia un INVALID_ARGUMENT sin explicar nada.
   CTA=""
   for _ in 1 2 3; do
     read -rp "ID de la cuenta a vincular (la PRIMERA columna, formato XXXXXX-XXXXXX-XXXXXX): " CTA
     if grep -q "^${CTA}[[:space:]]" /tmp/p3d-cuentas.txt 2>/dev/null; then
       break
     fi
-    if [[ "$CTA" =~ ^[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}$ ]]; then
-      gris "No está en la lista de arriba, pero tiene formato válido. Se intentará."
-      break
-    fi
-    alto "'$CTA' no es un ID de cuenta de facturación."
-    gris "Tiene que ser una de las de arriba, no 's' ni 'sí'."
+    alto "'$CTA' no es ninguna de las cuentas ABIERTAS de arriba."
+    gris "Tiene que ser una de esas, literal. No vale 's' ni una cerrada."
     CTA=""
   done
   [ -n "$CTA" ] || { echo "tres intentos fallidos, se aborta"; exit 1; }
@@ -76,6 +80,15 @@ else
   gris "cubre 240.000 vCPU-s y 450.000 GiB-s al mes. Pero es dinero: decides tú."
   read -rp "¿Vincular? [s/N] " R
   case "${R:-n}" in [Ss]*) gcloud beta billing projects link "$ACTUAL" --billing-account="$CTA";; *) exit 1;; esac
+
+  # Comprobar, no confiar: el link devuelve 0 aunque la cuenta este cerrada.
+  if ! gcloud beta billing projects describe "$ACTUAL" \
+       --format='value(billingEnabled)' 2>/dev/null | grep -qi true; then
+    alto "Vinculada pero billingEnabled sigue en false: esa cuenta esta CERRADA."
+    echo "Reactivala en https://console.cloud.google.com/billing y vuelve a lanzar."
+    exit 1
+  fi
+  echo "facturación activa"
 fi
 
 azul "3 · APIs"
