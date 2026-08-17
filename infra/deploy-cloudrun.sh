@@ -24,6 +24,16 @@ fi
 
 gcloud builds submit worker --tag "gcr.io/$PROY/$SVC" --project "$PROY"
 
+# --no-cpu-throttling  ES OBLIGATORIO, no una optimizacion.
+#   El pipeline corre en BackgroundTasks DESPUES de devolver el 202. Con la
+#   facturacion por peticion (el defecto) Cloud Run solo asigna CPU mientras se
+#   procesa una peticion, asi que el trabajo se quedaria colgado en 'recibido'
+#   sin ningun error visible. Este flag pasa a facturacion por instancia, que
+#   "allocates CPU even outside of request processing".
+#   Efecto en coste: se paga el ciclo de vida de la instancia, no los 3 s del
+#   trabajo. Con la franja gratuita (240.000 vCPU-s/mes) siguen cabiendo del
+#   orden de cien sesiones mensuales sin pagar nada.
+#
 # --memory 2Gi: Chromium mas GEOS. Con menos, la captura muere sin decir por que.
 # --timeout 900: el limite de Cloud Run. El pipeline tarda 3 s, pero los renders
 #   generativos de F2 van en minutos y conviene no tener que volver aqui.
@@ -37,6 +47,7 @@ gcloud run deploy "$SVC" \
   --image "gcr.io/$PROY/$SVC" \
   --project "$PROY" --region "$REGION" \
   --memory 2Gi --cpu 2 --timeout 900 \
+  --no-cpu-throttling \
   --min-instances 0 --max-instances 5 \
   --set-env-vars WORK_ROOT=/data \
   --set-secrets "SERVICE_TOKEN=${SECRETO}:latest" \
@@ -60,7 +71,14 @@ if [ "$CODE" != "401" ] && [ "$CODE" != "422" ]; then
   exit 1
 fi
 echo "OK: panel protegido y /jobs rechaza sin credencial."
+
+# La comprobacion que de verdad detecta el estrangulamiento de CPU: un trabajo
+# completo. Si --no-cpu-throttling faltara, esto se quedaria en 'recibido'.
 echo
-echo "Prueba completa (12 comprobaciones), con un DWG de verdad:"
+echo "AHORA CORRE LA PRUEBA COMPLETA. Es la unica que detecta si la tarea de"
+echo "fondo se queda colgada por falta de CPU:"
+echo
 echo "  SERVICE_TOKEN=\$(gcloud secrets versions access latest --secret=$SECRETO --project=$PROY) \\"
 echo "    ./worker/test_api.sh ruta/al/plano.dwg $URL"
+echo
+echo "Tiene que terminar en TODAS LAS COMPROBACIONES OK."
