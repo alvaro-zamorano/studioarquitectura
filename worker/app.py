@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-API del worker. Fase 0: un solo estudio, sin auth, estado en disco.
+API del worker. Fase 0: un solo estudio, un token de servicio, estado en disco.
 
     POST /jobs                 multipart: dwg=<fichero> [pdf=<fichero>]
     GET  /jobs/{id}            estado + resultado de las puertas
@@ -15,34 +15,69 @@ Lo que NO hace, a proposito:
     renders generativos, que si tardan minutos.
   - No hay base de datos: `job.json` en disco. Supabase entra en F1, con el
     multi-estudio. Meterla antes es resolver un problema que aun no existe.
-  - No hay auth: el enlace publico es un token de 16 hex que no se adivina.
+  - No hay usuarios ni sesiones: un unico token de servicio para todo el panel.
+    Supabase Auth entra en F1, con el multi-estudio.
+
+DOS ZONAS, y la distincion es la que sostiene el modelo:
+
+  PANEL (privado)    /jobs*          -> exige `Authorization: Bearer $SERVICE_TOKEN`
+  ENTREGA (publica)  /p/{token}/     -> abierta. El cliente final no tiene cuenta,
+                                        su autenticacion es un enlace de 16 hex
+                                        que no se adivina.
+
+Si `SERVICE_TOKEN` no esta puesta, el panel devuelve 503 y no arranca el trabajo.
+Falla cerrado a proposito: un worker desplegado sin token es una API que acepta
+DWGs de cualquiera, y ese error no puede ser silencioso.
 
 Las dos cosas que si estan desde el primer dia porque despues no se ponen:
   - El corte en `revision_humana`. Ninguna ruta devuelve un enlace sin que
     alguien haya llamado a /approve.
   - La salida integra de cada verificador se guarda en el trabajo. Cuando el
     estudio pregunte de donde sale un numero, hay una respuesta que no es "confia".
+
+Todo esto esta cubierto por ./test_api.sh, que son estas reglas convertidas en
+doce comprobaciones de codigo HTTP.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, BackgroundTasks, File, HTTPException, UploadFile
+import hmac
+import os
+
+from fastapi import FastAPI, BackgroundTasks, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 import run_pipeline as rp
 
-api = FastAPI(title="plano-3d worker", version="0.1")
+api = FastAPI(title="plano-3d worker", version="0.2")
 
 MAX_DWG = 60 * 1024 * 1024   # un DWG de vivienda va muy por debajo
 
 
+def panel(authorization: str | None = Header(None)) -> None:
+    """Guarda del panel privado. Se compara en tiempo constante."""
+    esperado = os.environ.get("SERVICE_TOKEN", "")
+    if not esperado:
+        raise HTTPException(503, "SERVICE_TOKEN sin configurar: el panel esta cerrado")
+    dado = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        dado = authorization[7:].strip()
+    if not dado or not hmac.compare_digest(dado, esperado):
+        raise HTTPException(401, "credencial de servicio no valida")
+
+
 @api.get("/health")
 def health():
+    """Abierta: la usa el balanceador. No revela el token, solo si esta puesto."""
     from shutil import which
-    return {"ok": True, "dwg2dxf": bool(which("dwg2dxf")), "work_root": str(rp.WORK_ROOT)}
+    return {"ok": True,
+            "dwg2dxf": bool(which("dwg2dxf")),
+            "panel_protegido": bool(os.environ.get("SERVICE_TOKEN")),
+            "work_root": str(rp.WORK_ROOT)}
 
 
 @api.post("/jobs", status_code=202)
 async def crear(background: BackgroundTasks,
+                _: None = Depends(panel),
                 dwg: UploadFile = File(...),
                 pdf: UploadFile | None = File(None)):
     if not dwg.filename.lower().endswith(".dwg"):
@@ -60,7 +95,7 @@ async def crear(background: BackgroundTasks,
 
 
 @api.get("/jobs/{job_id}")
-def estado(job_id: str):
+def estado(job_id: str, _: None = Depends(panel)):
     job = _get(job_id)
     body = {
         "id": job.id,
@@ -84,7 +119,7 @@ def estado(job_id: str):
 
 
 @api.get("/jobs/{job_id}/overlay")
-def overlay(job_id: str):
+def overlay(job_id: str, _: None = Depends(panel)):
     job = _get(job_id)
     f = job.work / "overlay.html"
     if not f.exists():
@@ -93,7 +128,7 @@ def overlay(job_id: str):
 
 
 @api.post("/jobs/{job_id}/approve")
-def aprobar(job_id: str):
+def aprobar(job_id: str, _: None = Depends(panel)):
     job = _get(job_id)
     try:
         job = rp.approve(job)
