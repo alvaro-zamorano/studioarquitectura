@@ -1,0 +1,75 @@
+/* Mismos tokens que el visor 3D. No es economía de esfuerzo: es que el panel y
+   el entregable tienen que parecer la misma cosa cuando el estudio los ve
+   seguidos en la misma reunión. */
+:root {
+  --ink: #14161a;
+  --ink-2: #5b6270;
+  --line: #e3e5ea;
+  --bg: #f5f6f8;
+  --panel: #fff;
+  --accent: #1a56db;
+  --ok: #0f8a5f;
+  --warn: #b06a00;
+  --inf: #d08a2a;
+  --err: #c0392b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0 }
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 780px; margin: 0 auto; padding: 32px 20px 80px }
+h1 { font-size: 19px; font-weight: 600; letter-spacing: -.01em }
+h2 { font-size: 11px; font-weight: 600; text-transform: uppercase;
+     letter-spacing: .07em; color: var(--ink-2); margin-bottom: 10px }
+p { color: var(--ink-2); font-size: 14px }
+a { color: var(--accent) }
+.sub { margin-top: 4px; font-size: 13.5px }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+        padding: 18px; margin-top: 18px }
+.drop { border: 1.5px dashed #c8ccd4; border-radius: 14px; padding: 40px 20px;
+        text-align: center; background: var(--panel); transition: .15s; cursor: pointer }
+.drop.on { border-color: var(--accent); background: rgba(26,86,219,.04) }
+.drop input { display: none }
+button {
+  font: inherit; font-size: 14px; font-weight: 500; border: 0; border-radius: 10px;
+  padding: 11px 20px; background: var(--ink); color: #fff; cursor: pointer;
+}
+button:disabled { opacity: .45; cursor: default }
+button.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--line) }
+.paso { display: flex; align-items: baseline; gap: 10px; padding: 7px 0;
+        border-bottom: 1px solid var(--line); font-size: 14px }
+.paso:last-child { border-bottom: 0 }
+.paso .n { flex: 1; font-variant-numeric: tabular-nums }
+.paso .t { color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 13px }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; margin-top: 6px }
+.dot.ok { background: var(--ok) } .dot.no { background: var(--err) }
+.dot.wait { background: #c3c8d1 }
+pre { background: #f7f8fa; border: 1px solid var(--line); border-radius: 10px;
+      padding: 12px; font-size: 12px; line-height: 1.45; overflow-x: auto;
+      white-space: pre-wrap; color: #2b2f36 }
+/* El desplegable de cada paso es subordinado: sangrado, pequeño y sin borde,
+   para que la lista de comprobaciones siga leyéndose como una lista. */
+details { margin: -2px 0 6px 17px }
+summary { cursor: pointer; font-size: 12.5px; color: #8b919c; list-style: none }
+summary::-webkit-details-marker { display: none }
+summary::before { content: '＋ '; font-size: 11px }
+details[open] summary::before { content: '－ ' }
+summary:hover { color: var(--ink-2) }
+details[open] summary { color: var(--ink-2) }
+.paso.con-detalle { border-bottom: 0 }
+.envoltura-paso { border-bottom: 1px solid var(--line) }
+.envoltura-paso:last-child { border-bottom: 0 }
+.aviso { border-left: 3px solid var(--inf); background: #fffaf1; padding: 12px 14px;
+         border-radius: 0 10px 10px 0; font-size: 13.5px; color: #6b4e1a }
+.enlace { display: block; background: #f7f8fa; border: 1px solid var(--line);
+          border-radius: 10px; padding: 12px; font-family: ui-monospace, monospace;
+          font-size: 13px; word-break: break-all; margin-top: 8px }
+/* Alto generoso a propósito: es la única comprobación que hace una persona y
+   la superposición trae las dos plantas apiladas. Escatimar aquí es empujar a
+   aprobar sin haber mirado la segunda. */
+iframe { width: 100%; height: 78vh; min-height: 560px; border: 1px solid var(--line);
+         border-radius: 10px; background: #fff }
+.err { color: var(--err); font-size: 13.5px }
