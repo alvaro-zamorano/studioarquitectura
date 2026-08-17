@@ -9,8 +9,8 @@ verificacion. El orquestador se adapta a ellos, nunca al reves.
 
 Estados:
 
-    recibido -> ingest -> extract -> verify2d -> build3d -> verify3d -> publish
-             -> revision_humana  (aqui se para: alguien mira la superposicion)
+    recibido -> ingest -> extract -> cobertura -> verify2d -> build3d -> verify3d
+             -> publish -> revision_humana  (aqui se para: alguien mira)
              -> publicado
 
 El corte en `revision_humana` es la puerta 7 y no se automatiza: es la unica
@@ -97,6 +97,12 @@ def process(job: Job) -> Job:
                       str(dwg), str(dxf)], False),
         ("extract",  [sys.executable, str(PIPE / "pipeline.py"), "extract",
                       str(dxf), "model.json"], False),
+        # Cobertura antes de correccion: las otras puertas comprueban que lo
+        # extraido esta bien, esta comprueba que no falte nada. Va aqui porque si
+        # el plano usa convenciones que no sabemos leer, seguir es perder tiempo
+        # y acabar con un modelo plausible e incompleto.
+        ("cobertura", [sys.executable, str(PIPE / "verify_coverage.py"),
+                       str(dxf), "model.json"], True),
         ("verify2d", [sys.executable, str(PIPE / "pipeline.py"), "verify",
                       "model.json", str(dxf), "overlay.html"], True),
         ("build3d",  [sys.executable, str(PIPE / "build_scene.py"),
