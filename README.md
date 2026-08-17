@@ -13,18 +13,36 @@ error medido. El 3D es lo que hace comprensible ese número a alguien que no lee
 
 ```
 Luis_Mitjans_-_IA.dwg (AC1032, DWG 2018)
-  → dwg2dxf            0,46 s   LibreDWG 0.14.8580
-  → extract            0,82 s   model.json   ── IDÉNTICO a la referencia
-  → verify 2D          1,13 s   puertas 1-5, ambas islas
-  → build3d            0,20 s   scene.json   ── IDÉNTICO a la referencia
-  → verify 3D          0,25 s   TODAS LAS PUERTAS OK (1-8, ambas variantes)
-  → publish            0,05 s   visor web 31 KB + offline 620 KB
+  → dwg2dxf            0,41 s   LibreDWG 0.14.8580
+  → extract            0,64 s   model.json   ── IDÉNTICO a la referencia
+  → cobertura          0,48 s   puerta 9: toda etiqueta del plano está en el modelo
+  → verify 2D          0,82 s   puertas 1-5, ambas islas
+  → build3d            0,14 s   scene.json   ── IDÉNTICO a la referencia
+  → verify 3D          0,17 s   TODAS LAS PUERTAS OK (1-8, ambas variantes)
+  → publish            0,04 s   visor web 31 KB + offline 620 KB
                        ──────
-                       2,91 s   → estado: revision_humana
+                       2,70 s   → estado: revision_humana
 ```
 
 La cadena se reproduce **desde el fichero DWG original**. El `model.json` ya no viene
 dado: se reconstruye y sale idéntico.
+
+---
+
+## Qué se sabe sobre planos de otros estudios
+
+Medido, no supuesto:
+
+| Se cambia | Resultado |
+|---|---|
+| Nombres de capa (`POLILINEA`→`ZZQ-4471`, `01-SECC`→`CAPA-9`) | **geometría idéntica**. La detección por forma funciona |
+| `0,78x1,25` escrito `0.78x1.25` | ventanas 12→2. **Lo caza la puerta 9** |
+| `PUERTA 72.5` escrito `P-725` | puertas 6→2. **Lo caza la puerta 9** |
+| `12,50 m2` escrito `12,50 m²` | muere en `extract`, exit 1 |
+
+Antes de la puerta 9, los dos casos del medio pasaban con **exit 0 y las ocho puertas en
+verde**: un modelo plausible al que le faltaban dos tercios de los huecos, con la puerta 8
+disimulándolo mediante pasos deducidos. Ese era el fallo caro y ya no es silencioso.
 
 ---
 
@@ -37,9 +55,10 @@ worker/                   el motor. Contenedor. Lo que no cabe en serverless
   run_pipeline.py         orquestador de estados
   pipeline/               código verificado — NO se toca desde el orquestador
     pipeline.py           DWG→DXF→model.json + puertas 1-5 + superposición 2D
+    verify_coverage.py    puerta 9: cobertura de etiquetas
     build_scene.py        model.json → scene.json (geometría 3D)
     openings.py           localización de vanos por rayo
-    verify.py             las 8 puertas
+    verify.py             las puertas 1-8 del 3D
     publish.py            scene.json → visor web + visor offline
     shot_brief.py         cámara + brief de render desde los datos
     check_render.py       verificador de la imagen generada
@@ -101,15 +120,20 @@ docker run -p 8080:8080 -v $PWD/data:/data plano3d-worker
 ## Las reglas que no se negocian
 
 1. **`verify.py` en verde o no se mergea.** Corre en CI en cada commit.
-2. **Nada se entrega sin la superposición 2D vista por un humano.** Es la puerta 7 y no
+2. **La puerta 9 es la que protege a los planos ajenos.** Las otras comprueban que lo
+   extraído es *correcto*; la 9 comprueba que está *completo*. No tiene umbrales: es una
+   contabilidad exacta, y busca lo que no sabemos leer en vez de medir lo que sí.
+   Si un plano nuevo la hace fallar, se le enseña la convención al extractor —
+   **nunca se relaja la puerta**.
+3. **Nada se entrega sin la superposición 2D vista por un humano.** Es la puerta 7 y no
    se automatiza: es la única que detecta una extracción numéricamente correcta pero
    geométricamente falsa. El código la impone: ninguna ruta devuelve enlace sin `/approve`.
-3. **Ningún render llega al cliente sin pasar `check_render.py`.**
-4. **Ningún parámetro se ajusta contra la métrica de validación.** Si hay que tocar algo
+4. **Ningún render llega al cliente sin pasar `check_render.py`.**
+5. **Ningún parámetro se ajusta contra la métrica de validación.** Si hay que tocar algo
    para que una comprobación pase, esa comprobación queda invalidada.
-5. **Ninguna medida sale de una imagen generada.** La imagen es el acabado; el número
+6. **Ninguna medida sale de una imagen generada.** La imagen es el acabado; el número
    viene del modelo.
-6. **El orquestador no modifica el pipeline.** Los scripts están verificados contra el
+7. **El orquestador no modifica el pipeline.** Los scripts están verificados contra el
    plano de Milímetro; se llaman como subprocesos y se adapta el orquestador, nunca al revés.
 
 ---
@@ -119,14 +143,11 @@ docker run -p 8080:8080 -v $PWD/data:/data plano3d-worker
 | | Pieza | Por qué ahora o por qué no |
 |---|---|---|
 | **F0.2** | App Next.js en Vercel | la cara: subir, ver estado, aprobar, compartir |
-| **F0.3** | Segundo DWG de otro estudio | **el riesgo que mata el proyecto.** Validado contra un solo fichero |
+| **F0.3** | Segundo DWG de otro estudio | los nombres de capa ya no importan; lo que rompe son las convenciones de texto, y ahora la puerta 9 las declara en vez de tragarlas |
 | F1 | Supabase + RLS, puertas persistidas | cuando haya más de un estudio |
 | F1 | Cola (QStash) | cuando entren los renders, que tardan minutos |
 | F2 | fal.ai + ControlNet-depth | bloqueado por `FAL_KEY` |
 | F3 | Estudio de capacidad | *"¿cabe una cama de 150 en DORM 2?"* — esto no lo hace nadie |
-
-**F0.3 va antes que F1.** Un DWG de otro despacho cuesta un email y decide si esto es un
-producto o una pieza artesanal muy buena.
 
 ---
 
